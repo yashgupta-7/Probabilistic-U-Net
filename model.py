@@ -71,21 +71,27 @@ class Comb(nn.Module):
         
         
     def forward(self, features, z):
+        # print(features.shape)
+        # print(z.shape)
         bs, nch, h, w = features.shape
-        bs, ld = z.shape
-        z = torch.unsqueeze(z, 2)
+        # print(h)
+        bs, ld, _, _ = z.shape
+        # z = torch.unsqueeze(z, 2)
         z = self.tile(z, 2, h)
-        z = torch.unsqueeze(z, 3)
-        z = self.tile(z, 3, w)        
+        # z = torch.unsqueeze(z, 3)
+        z = self.tile(z, 3, w) 
+        # print(features.shape)
+        # print(z.shape)       
         features = torch.cat((features, z), dim=1)
         return self.layers(features)
     
-    def tile(a, dim, n_tile):
+    def tile(self, a, dim, n_tile):
         init_dim = a.size(dim)
         repeat_idx = [1] * a.dim()
         repeat_idx[dim] = n_tile
         a = a.repeat(*(repeat_idx))
-        order_index = torch.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
+        order_index = torch.cuda.LongTensor(np.concatenate([init_dim * np.arange(n_tile) + i for i in range(init_dim)]))
+        # order_index.to(torch.device('cuda'))
         return torch.index_select(a, dim, order_index)
         
         
@@ -109,10 +115,18 @@ class ProbU_Net(nn.Module):
         self.unet_features = self.unet.forward(x)
     
     def loss(self, segx, beta):
-        self.kld_loss = kl.kl_divergence(self.posterior_latent_space, self.prior_latent_space)
+        self.kld_loss = kl.kl_divergence(self.post_latent_space, self.prior_latent_space)
         
-        posterior_sample = self.posterior_latent_space.rsample()
+        posterior_sample = self.post_latent_space.rsample()
         self.reconstruction = self.fcomb.forward(self.unet_features, posterior_sample)
-        self.recon_loss = nn.BCEWithLogitsLoss(self.reconstruction, segx)
+        self.recon_loss = nn.BCEWithLogitsLoss()(self.reconstruction, segx)
         
         return self.recon_loss + beta*self.recon_loss
+    
+    def reconstruct(self, x, num_samples=1):
+        prior_latent_space = self.prior.forward(x)
+        res = []
+        for i in range(num_samples):
+          prior_sample = prior_latent_space.rsample()
+          res.append(self.fcomb.forward(self.unet.forward(x), prior_sample))
+        return res
