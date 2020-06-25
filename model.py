@@ -121,7 +121,7 @@ class ProbU_Net(nn.Module):
         self.reconstruction = self.fcomb.forward(self.unet_features, posterior_sample)
         self.recon_loss = nn.BCEWithLogitsLoss()(self.reconstruction, segx)
         
-        return self.recon_loss + beta*self.recon_loss
+        return self.recon_loss + beta*self.kld_loss
     
     def reconstruct(self, x, num_samples=1):
         prior_latent_space = self.prior.forward(x)
